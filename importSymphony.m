@@ -1,5 +1,4 @@
 function experiment = importSymphony(project, filePath)
-
     % Add JHDF5 to the java path
     jhdfPath = which('sis-jhdf5.jar');
     if isempty(jhdfPath)
@@ -30,7 +29,6 @@ function experiment = importSymphony(project, filePath)
 end
 
 function experiment = readExperiment(project, reader, experimentPath)
-
     purpose = reader.getStringAttribute(experimentPath, 'purpose');
     [startTime, endTime] = readTimes(reader, experimentPath);
     
@@ -60,7 +58,6 @@ function experiment = readExperiment(project, reader, experimentPath)
 end
 
 function device = readDevice(experiment, reader, devicePath)
-    
     name = reader.getStringAttribute(devicePath, 'name');
     manufacturer = reader.getStringAttribute(devicePath, 'manufacturer');
 
@@ -76,7 +73,6 @@ function device = findDevice(context, uuid)
 end
 
 function source = readSource(parent, reader, sourcePath)
-    
     label = reader.getStringAttribute(sourcePath, 'label');
     
     %source = parent.insertSource(label);
@@ -97,7 +93,6 @@ function source = findSource(context, uuid)
 end
 
 function group = readEpochGroup(parent, reader, groupPath)
-    
     sourceUuid = reader.getStringAttribute([groupPath '/source'], 'uuid');
     %source = findSource(parent.getDataContext(), sourceUuid);
     source = [];
@@ -125,7 +120,6 @@ function group = readEpochGroup(parent, reader, groupPath)
 end
 
 function block = readEpochBlock(epochGroup, reader, blockPath)
-    
     protocolId = reader.getStringAttribute(blockPath, 'protocolID');
     protocolParameters = readDictionary(reader, blockPath, 'protocolParameters');
     [startTime, endTime] = readTimes(reader, blockPath);
@@ -144,7 +138,6 @@ function block = readEpochBlock(epochGroup, reader, blockPath)
 end
 
 function epoch = readEpoch(epochBlock, reader, epochPath)
-
     [startTime, endTime] = readTimes(reader, epochPath);
     protocolParameters = readDictionary(reader, epochPath, 'protocolParameters');
 
@@ -174,7 +167,6 @@ function epoch = readEpoch(epochBlock, reader, epochPath)
 end
 
 function background = readBackground(epoch, reader, backgroundPath)
-
     deviceUuid = reader.getStringAttribute([backgroundPath '/device'], 'uuid');
     %device = findDevice(epoch.getDataContext(), deviceUuid);
     device = [];
@@ -192,7 +184,6 @@ function background = readBackground(epoch, reader, backgroundPath)
 end
 
 function stimulus = readStimulus(epoch, reader, stimulusPath)
-
     deviceUuid = reader.getStringAttribute([stimulusPath '/device'], 'uuid');
     %device = findDevice(epoch.getDataContext(), deviceUuid);
     device = [];
@@ -209,7 +200,6 @@ function stimulus = readStimulus(epoch, reader, stimulusPath)
 end
 
 function response = readResponse(epoch, reader, responsePath)
-
     deviceUuid = reader.getStringAttribute([responsePath '/device'], 'uuid');
     %device = findDevice(epoch.getDataContext(), deviceUuid);
     device = [];
@@ -271,7 +261,23 @@ function tf = hasResources(reader, entityPath)
 end
 
 function addResources(reader, entityPath, entity)
-    fprintf(', resources');
+    fprintf(', {\n');
+    resources = reader.getGroupMemberInformation([entityPath '/resources'], true);
+    for i = 1:resources.size()
+        readResource(entity, reader, char(resources.get(i-1).getPath()));
+    end
+    fprintf('}');
+end
+
+function resource = readResource(entity, reader, resourcePath)
+    uti = reader.getStringAttribute(resourcePath, 'uti');
+    name = reader.getStringAttribute(resourcePath, 'name');
+    
+    %resource = entity.addResource(uti, name, data);
+    resource = [];
+    fprintf('resource: %s, %s', uti, name);
+    
+    addAnnotations(reader, resourcePath, resource);
 end
 
 function tf = hasGroupMember(reader, path, name)
