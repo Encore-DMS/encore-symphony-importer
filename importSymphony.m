@@ -127,12 +127,12 @@ end
 function block = readEpochBlock(epochGroup, reader, blockPath)
     
     protocolId = reader.getStringAttribute(blockPath, 'protocolID');
-    parameters = [];
+    protocolParameters = readDictionary(reader, blockPath, 'protocolParameters');
     [startTime, endTime] = readTimes(reader, blockPath);
 
-    %block = epochGroup.insertEpochBlock(protocolId, parameters, startTime, endTime);
+    %block = epochGroup.insertEpochBlock(protocolId, protocolParameters, startTime, endTime);
     block = [];
-    fprintf('epoch block: %s, %s, %s, %s', protocolId, parameters, startTime, endTime);
+    fprintf('epoch block: %s, [%s], %s, %s', protocolId, appbox.mapstr(protocolParameters), startTime, endTime);
     
     addAnnotations(reader, blockPath, block);
     
@@ -146,22 +146,49 @@ end
 function epoch = readEpoch(epochBlock, reader, epochPath)
 
     [startTime, endTime] = readTimes(reader, epochPath);
+    protocolParameters = readDictionary(reader, epochPath, 'protocolParameters');
 
-    %epoch = epochBlock.insertEpoch(startTime, endTime);
+    %epoch = epochBlock.insertEpoch(startTime, endTime, protocolParameters);
     epoch = [];
-    fprintf('epoch: %s, %s', startTime, endTime);
+    fprintf('epoch: %s, %s, [%s]', startTime, endTime, appbox.mapstr(protocolParameters));
     
     addAnnotations(reader, epochPath, epoch);
     
+    % Read backgrounds
+    backgrounds = reader.getGroupMemberInformation([epochPath '/backgrounds'], true);
+    for i = 1:backgrounds.size()
+        readBackground(epoch, reader, char(backgrounds.get(i-1).getPath()));
+    end
+    
+    % Read stimuli
     stimuli = reader.getGroupMemberInformation([epochPath '/stimuli'], true);
     for i = 1:stimuli.size()
         readStimulus(epoch, reader, char(stimuli.get(i-1).getPath()));
     end
     
+    % Read responses
     responses = reader.getGroupMemberInformation([epochPath '/responses'], true);
     for i = 1:responses.size()
         readResponse(epoch, reader, char(responses.get(i-1).getPath()));
     end
+end
+
+function background = readBackground(epoch, reader, backgroundPath)
+
+    deviceUuid = reader.getStringAttribute([backgroundPath '/device'], 'uuid');
+    %device = findDevice(epoch.getDataContext(), deviceUuid);
+    device = [];
+    
+    value = reader.getFloatAttribute(backgroundPath, 'value');
+    valueUnits = reader.getStringAttribute(backgroundPath, 'valueUnits');
+    sampleRate = reader.getFloatAttribute(backgroundPath, 'sampleRate');
+    sampleRateUnits = reader.getStringAttribute(backgroundPath, 'sampleRateUnits');
+
+    %background = epoch.insertBackground(device, deviceParameters, value, units, sampleRate, sampleRateUnits);
+    background = [];
+    fprintf('background: %s, %s, %s, %s, %s', deviceUuid, num2str(value), valueUnits, num2str(sampleRate), sampleRateUnits);
+    
+    addAnnotations(reader, backgroundPath, background);
 end
 
 function stimulus = readStimulus(epoch, reader, stimulusPath)
@@ -171,11 +198,12 @@ function stimulus = readStimulus(epoch, reader, stimulusPath)
     device = [];
     
     stimulusId = reader.getStringAttribute(stimulusPath, 'stimulusID');
+    parameters = readDictionary(reader, stimulusPath, 'parameters');
     units = reader.getStringAttribute(stimulusPath, 'units');
 
     %stimulus = epoch.insertStimulus(device, deviceParameters, stimulusId, parameters, units);
     stimulus = [];
-    fprintf('stimulus: %s, %s, %s', deviceUuid, stimulusId, units);
+    fprintf('stimulus: %s, %s, [%s], %s', deviceUuid, stimulusId, appbox.mapstr(parameters), units);
     
     addAnnotations(reader, stimulusPath, stimulus);
 end
