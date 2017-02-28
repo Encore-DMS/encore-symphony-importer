@@ -1,4 +1,13 @@
 function experiment = importSymphony(project, filePath)
+
+    jhdfPath = which('sis-jhdf5.jar');
+    if isempty(jhdfPath)
+        error('Cannot find sis-jhdf5.jar on matlab path');
+    end
+    if ~any(strcmpi(javaclasspath, jhdfPath))
+        javaaddpath(jhdfPath);
+    end
+    
     import ch.systemsx.cisd.hdf5.*;
     
     reader = HDF5Factory.openForReading(filePath);
@@ -257,6 +266,7 @@ function addKeywords(reader, entityPath, entity)
     for i = 1:numel(keywords)
         %entity.addTag(keywords(i));
     end
+    fprintf(', keywords');
 end
 
 function [s, e] = readTimes(reader, path)
