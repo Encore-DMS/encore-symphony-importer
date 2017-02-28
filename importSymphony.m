@@ -1,5 +1,6 @@
 function experiment = importSymphony(project, filePath)
 
+    % Add JHDF5 to the java path
     jhdfPath = which('sis-jhdf5.jar');
     if isempty(jhdfPath)
         error('Cannot find sis-jhdf5.jar on matlab path');
@@ -12,6 +13,7 @@ function experiment = importSymphony(project, filePath)
     
     reader = HDF5Factory.openForReading(filePath);
     
+    % Read experiment
     experimentGroup = [];
     members = reader.getGroupMemberInformation('/', true);
     for i = 1:members.size()
@@ -24,7 +26,6 @@ function experiment = importSymphony(project, filePath)
     if isempty(experimentGroup)
         error('No experiment (top-level) group found');
     end
-    
     experiment = readExperiment(project, reader, char(experimentGroup.getPath())); 
 end
 
@@ -39,19 +40,19 @@ function experiment = readExperiment(project, reader, experimentPath)
     
     addAnnotations(reader, experimentPath, experiment);
     
-    % Read devices.
+    % Read devices
     devices = reader.getGroupMemberInformation([experimentPath '/devices'], true);
     for i = 1:devices.size()
         readDevice(experiment, reader, char(devices.get(i-1).getPath()));
     end
     
-    % Read sources.
+    % Read sources
     sources = reader.getGroupMemberInformation([experimentPath '/sources'], true);
     for i = 1:sources.size()
         readSource(experiment, reader, char(sources.get(i-1).getPath()));
     end
     
-    % Read epoch groups.
+    % Read epoch groups
     groups = reader.getGroupMemberInformation([experimentPath '/epochGroups'], true);
     for i = 1:groups.size()
         readEpochGroup(experiment, reader, char(groups.get(i-1).getPath())); 
@@ -84,7 +85,7 @@ function source = readSource(parent, reader, sourcePath)
     
     addAnnotations(reader, sourcePath, source);
     
-    % Read nested sources.
+    % Read nested sources
     children = reader.getGroupMemberInformation([sourcePath '/sources'], true);
     for i = 1:children.size()
         readSource(source, reader, char(children.get(i-1).getPath()));
@@ -110,13 +111,13 @@ function group = readEpochGroup(parent, reader, groupPath)
     
     addAnnotations(reader, groupPath, group);
     
-    % Read epoch blocks.
+    % Read epoch blocks
     blocks = reader.getGroupMemberInformation([groupPath '/epochBlocks'], true);
     for i = 1:blocks.size()
         readEpochBlock(group, reader, char(blocks.get(i-1).getPath()));
     end
     
-    % Read nested epoch groups.
+    % Read nested epoch groups
     children = reader.getGroupMemberInformation([groupPath '/epochGroups'], true);
     for i = 1:children.size()
         readEpochGroup(group, reader, char(children.get(i-1).getPath()));
@@ -135,7 +136,7 @@ function block = readEpochBlock(epochGroup, reader, blockPath)
     
     addAnnotations(reader, blockPath, block);
     
-    % Read epochs.
+    % Read epochs
     epochs = reader.getGroupMemberInformation([blockPath '/epochs'], true);
     for i = 1:epochs.size()
         readEpoch(block, reader, char(epochs.get(i-1).getPath()));
@@ -219,7 +220,14 @@ function tf = hasProperties(reader, entityPath)
 end
 
 function addProperties(reader, entityPath, entity)
-    fprintf(', properties');
+    properties = readDictionary(reader, entityPath, 'properties');
+    keys = properties.keys;
+    for i = 1:numel(keys)
+        key = keys{i};
+        %entity.addProperty(key, properties(key));
+    end
+
+    fprintf(', properties[%s]', appbox.mapstr(properties));
 end
 
 function tf = hasNotes(reader, entityPath)
@@ -261,12 +269,71 @@ function tf = hasKeywords(reader, entityPath)
 end
 
 function addKeywords(reader, entityPath, entity)
-    keywordsStr = reader.getStringAttribute(entityPath, 'keywords');
-    keywords = keywordsStr.split(',');
+    keywordsStr = char(reader.getStringAttribute(entityPath, 'keywords'));
+    keywords = strsplit(keywordsStr, ',');
     for i = 1:numel(keywords)
         %entity.addTag(keywords(i));
     end
-    fprintf(', keywords');
+    fprintf(', keywords{%s}', strjoin(keywords, ', '));
+end
+
+function d = readDictionary(reader, group, name)
+    import ch.systemsx.cisd.hdf5.*;
+
+    d = containers.Map();
+    
+    dictGroup = [group '/' name];
+    attributeNames = reader.getAttributeNames(dictGroup);
+    for i = 1:attributeNames.size()
+        attr = char(attributeNames.get(i-1));
+        info = reader.getAttributeInformation(dictGroup, attr);
+        
+        if info.getDataClass() == HDF5DataClass.STRING
+            d(attr) = char(reader.getStringAttribute(dictGroup, attr));            
+        elseif info.getDataClass() == HDF5DataClass.INTEGER
+            if info.getElementSize() == 4
+                if info.getNumberOfElements() > 1
+                    d(attr) = int32(reader.getIntArrayAttribute(dictGroup, attr));
+                else
+                    d(attr) = int32(reader.getIntAttribute(dictGroup, attr));
+                end
+            elseif info.getElementSize() == 8
+                if info.getNumberOfElements() > 1
+                    d(attr) = int64(reader.getLongArrayAttribute(dictGroup, attr));
+                else
+                    d(attr) = int64(reader.getLongAttribute(dictGroup, attr));
+                end
+            elseif info.getElementSize() == 2
+                if info.getNumberOfElements() > 1
+                    d(attr) = int16(reader.getShortArrayAttribute(dictGroup, attr));
+                else
+                    d(attr) = int16(reader.getShortAttribute(dictGroup, attr));
+                end
+            else
+                error([dictGroup '.' attr ' is not a supported attribute type']);
+            end
+        elseif info.getDataClass() == HDF5DataClass.FLOAT
+            if info.getElementSize() == 4
+                if info.getNumberOfElements() > 1
+                    d(attr) = single(reader.getFloatArrayAttribute(dictGroup, attr));
+                else
+                    d(attr) = single(reader.getFloatAttribute(dictGroup, attr));
+                end
+            elseif info.getElementSize() == 8
+                if info.getNumberOfElements() > 1
+                    d(attr) = double(reader.getDoubleArrayAttribute(dictGroup, attr));
+                else
+                    d(attr) = double(reader.getDoubleAttribute(dictGroup, attr));
+                end
+            else
+                error([dictGroup '.' attr ' is not a supported attribute type']);
+            end
+        elseif info.getDataClass() == HDF5DataClass.BOOLEAN
+            d(attr) = reader.getBooleanAttribute(dictGroup, attr);
+        else
+            error([dictGroup '.' attr ' is not a supported attribute type']);
+        end
+    end
 end
 
 function [s, e] = readTimes(reader, path)
