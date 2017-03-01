@@ -61,7 +61,7 @@ function device = readDevice(experiment, reader, devicePath)
     name = reader.getStringAttribute(devicePath, 'name');
     manufacturer = reader.getStringAttribute(devicePath, 'manufacturer');
 
-    %device = experimnet.insertDevice(name, manufacturer);
+    %device = experiment.insertDevice(name, manufacturer);
     device = [];
     fprintf('device: %s, %s', name, manufacturer);
     
@@ -74,10 +74,13 @@ end
 
 function source = readSource(parent, reader, sourcePath)
     label = reader.getStringAttribute(sourcePath, 'label');
+    ticks = reader.getLongAttribute(sourcePath, 'creationTimeDotNetDateTimeOffsetTicks');
+    offset = reader.getDoubleAttribute(sourcePath, 'creationTimeDotNetDateTimeOffsetOffsetHours');
+    creationTime = dotNetTicksToDateTime(ticks, offset);
     
-    %source = parent.insertSource(label);
+    %source = parent.insertSource(label, creationTime);
     source = [];
-    fprintf('source: %s', label);
+    fprintf('source: %s, %s', label, creationTime);
     
     addAnnotations(reader, sourcePath, source);
     
@@ -193,10 +196,16 @@ function stimulus = readStimulus(epoch, reader, stimulusPath)
     stimulusId = reader.getStringAttribute(stimulusPath, 'stimulusID');
     parameters = readDictionary(reader, stimulusPath, 'parameters');
     units = reader.getStringAttribute(stimulusPath, 'units');
+    
+    if hasGroupMember(reader, stimulusPath, 'data')
+        [data, units] = readMeasurements(reader, stimulusPath, 'data');
+    else
+        data = [];
+    end
 
-    %stimulus = epoch.insertStimulus(device, deviceParameters, stimulusId, parameters, units);
+    %stimulus = epoch.insertStimulus(device, deviceParameters, stimulusId, parameters, units, data);
     stimulus = [];
-    fprintf('stimulus: %s, [%s], %s, [%s], %s', deviceUuid, appbox.mapstr(deviceParameters), stimulusId, appbox.mapstr(parameters), units);
+    fprintf('stimulus: %s, [%s], %s, [%s], %s, %s', deviceUuid, appbox.mapstr(deviceParameters), stimulusId, appbox.mapstr(parameters), units, num2str(size(data)));
     
     addAnnotations(reader, stimulusPath, stimulus);
 end
@@ -207,12 +216,13 @@ function response = readResponse(epoch, reader, responsePath)
     device = [];
     deviceParameters = readDeviceParameters(reader, responsePath, 'Amp1'); % device.name);
     
+    [data, units] = readMeasurements(reader, responsePath, 'data');
     sampleRate = reader.getFloatAttribute(responsePath, 'sampleRate');
     sampleRateUnits = reader.getStringAttribute(responsePath, 'sampleRateUnits');
 
     %response = epoch.insertResponse(device, deviceParameters, data, units, sampleRate, sampleRateUnits);
     response = [];
-    fprintf('response: %s, [%s], %s, %s', deviceUuid, appbox.mapstr(deviceParameters), num2str(sampleRate), sampleRateUnits);
+    fprintf('response: %s, [%s], [%s], %s, %s, %s', deviceUuid, appbox.mapstr(deviceParameters), num2str(size(data)), units, num2str(sampleRate), sampleRateUnits);
     
     addAnnotations(reader, responsePath, response);
 end
@@ -312,6 +322,25 @@ function addKeywords(reader, entityPath, entity)
         %entity.addTag(keywords(i));
     end
     fprintf(', keywords{%s}', strjoin(keywords, ', '));
+end
+
+function [q, u] = readMeasurements(reader, path, dsetName)
+    file = H5F.open(char(reader.getFile()), 'H5F_ACC_RDONLY', 'H5P_DEFAULT');
+    dset = H5D.open(file, [path '/' dsetName]);
+    
+    datatype = H5T.open(file, 'MEASUREMENT');
+    rdata = H5D.read(dset, datatype, 'H5S_ALL', 'H5S_ALL', 'H5P_DEFAULT');
+    
+    H5T.close(datatype);
+    H5D.close(dset);
+    H5F.close(file);
+    
+    q = rdata.quantity';    
+    u = cellstr(unique(rdata.units', 'rows'));
+    if numel(u) > 1
+        error('Units are not homogenous in measurement data');
+    end
+    u = u{1};
 end
 
 function p = readDeviceParameters(reader, path, deviceName)
