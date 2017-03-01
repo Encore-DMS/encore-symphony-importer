@@ -170,6 +170,7 @@ function background = readBackground(epoch, reader, backgroundPath)
     deviceUuid = reader.getStringAttribute([backgroundPath '/device'], 'uuid');
     %device = findDevice(epoch.getDataContext(), deviceUuid);
     device = [];
+    deviceParameters = readDeviceParameters(reader, backgroundPath, 'Amp1'); % device.name);
     
     value = reader.getFloatAttribute(backgroundPath, 'value');
     valueUnits = reader.getStringAttribute(backgroundPath, 'valueUnits');
@@ -178,7 +179,7 @@ function background = readBackground(epoch, reader, backgroundPath)
 
     %background = epoch.insertBackground(device, deviceParameters, value, units, sampleRate, sampleRateUnits);
     background = [];
-    fprintf('background: %s, %s, %s, %s, %s', deviceUuid, num2str(value), valueUnits, num2str(sampleRate), sampleRateUnits);
+    fprintf('background: %s, [%s], %s, %s, %s, %s', deviceUuid, deviceParameters, num2str(value), valueUnits, num2str(sampleRate), sampleRateUnits);
     
     addAnnotations(reader, backgroundPath, background);
 end
@@ -187,6 +188,7 @@ function stimulus = readStimulus(epoch, reader, stimulusPath)
     deviceUuid = reader.getStringAttribute([stimulusPath '/device'], 'uuid');
     %device = findDevice(epoch.getDataContext(), deviceUuid);
     device = [];
+    deviceParameters = readDeviceParameters(reader, stimulusPath, 'Amp1'); % device.name);
     
     stimulusId = reader.getStringAttribute(stimulusPath, 'stimulusID');
     parameters = readDictionary(reader, stimulusPath, 'parameters');
@@ -194,7 +196,7 @@ function stimulus = readStimulus(epoch, reader, stimulusPath)
 
     %stimulus = epoch.insertStimulus(device, deviceParameters, stimulusId, parameters, units);
     stimulus = [];
-    fprintf('stimulus: %s, %s, [%s], %s', deviceUuid, stimulusId, appbox.mapstr(parameters), units);
+    fprintf('stimulus: %s, [%s], %s, [%s], %s', deviceUuid, appbox.mapstr(deviceParameters), stimulusId, appbox.mapstr(parameters), units);
     
     addAnnotations(reader, stimulusPath, stimulus);
 end
@@ -203,13 +205,14 @@ function response = readResponse(epoch, reader, responsePath)
     deviceUuid = reader.getStringAttribute([responsePath '/device'], 'uuid');
     %device = findDevice(epoch.getDataContext(), deviceUuid);
     device = [];
-
+    deviceParameters = readDeviceParameters(reader, responsePath, 'Amp1'); % device.name);
+    
     sampleRate = reader.getFloatAttribute(responsePath, 'sampleRate');
     sampleRateUnits = reader.getStringAttribute(responsePath, 'sampleRateUnits');
 
     %response = epoch.insertResponse(device, deviceParameters, data, units, sampleRate, sampleRateUnits);
     response = [];
-    fprintf('response: %s, %s, %s', deviceUuid, num2str(sampleRate), sampleRateUnits);
+    fprintf('response: %s, [%s], %s, %s', deviceUuid, appbox.mapstr(deviceParameters), num2str(sampleRate), sampleRateUnits);
     
     addAnnotations(reader, responsePath, response);
 end
@@ -275,7 +278,7 @@ function resource = readResource(entity, reader, resourcePath)
     
     %resource = entity.addResource(uti, name, data);
     resource = [];
-    fprintf('resource: %s, %s', uti, name);
+    fprintf('\tresource: %s, %s', uti, name);
     
     addAnnotations(reader, resourcePath, resource);
 end
@@ -309,6 +312,36 @@ function addKeywords(reader, entityPath, entity)
         %entity.addTag(keywords(i));
     end
     fprintf(', keywords{%s}', strjoin(keywords, ', '));
+end
+
+function p = readDeviceParameters(reader, path, deviceName)
+    spansGroup = [path '/dataConfigurationSpans'];
+    nSpans = reader.getGroupMembers(spansGroup).size();
+    
+    p = containers.Map();
+    for i = 1:nSpans
+        span = [spansGroup '/span_' num2str(i-1)];
+        
+        nodes = reader.getGroupMembers(span);
+        for j = 1:nodes.size()
+            node = char(nodes.get(j-1));
+            if strcmp(node, deviceName)
+                params = readDictionary(reader, span, char(nodes.get(j-1)));
+                keys = params.keys;
+                for k = 1:numel(keys)
+                    key = keys{k};
+                    value = params(key);
+
+                    if p.isKey(key)
+                        p(key) = [p(key), {value}];
+                    else
+                        p(key) = value;
+                    end
+                end
+                break;
+            end
+        end
+    end
 end
 
 function d = readDictionary(reader, group, name)
