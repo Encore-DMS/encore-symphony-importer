@@ -205,7 +205,7 @@ function stimulus = readStimulus(epoch, reader, stimulusPath)
 
     %stimulus = epoch.insertStimulus(device, deviceParameters, stimulusId, parameters, units, data);
     stimulus = [];
-    fprintf('stimulus: %s, [%s], %s, [%s], %s, %s', deviceUuid, appbox.mapstr(deviceParameters), stimulusId, appbox.mapstr(parameters), units, num2str(size(data)));
+    fprintf('stimulus: %s, [%s], %s, [%s], %s, [%s]', deviceUuid, appbox.mapstr(deviceParameters), stimulusId, appbox.mapstr(parameters), units, num2str(size(data)));
     
     addAnnotations(reader, stimulusPath, stimulus);
 end
@@ -285,10 +285,11 @@ end
 function resource = readResource(entity, reader, resourcePath)
     uti = reader.getStringAttribute(resourcePath, 'uti');
     name = reader.getStringAttribute(resourcePath, 'name');
+    data = typecast(reader.readAsByteArray([resourcePath '/data']), 'uint8');
     
     %resource = entity.addResource(uti, name, data);
     resource = [];
-    fprintf('\tresource: %s, %s', uti, name);
+    fprintf('\tresource: %s, %s, [%s]', uti, name, num2str(size(data)));
     
     addAnnotations(reader, resourcePath, resource);
 end
