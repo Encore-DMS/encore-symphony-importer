@@ -60,25 +60,35 @@ end
 function device = readDevice(experiment, reader, devicePath)
     name = reader.getStringAttribute(devicePath, 'name');
     manufacturer = reader.getStringAttribute(devicePath, 'manufacturer');
-
-    %device = experiment.insertDevice(name, manufacturer);
+    uuid = reader.getStringAttribute(devicePath, 'uuid');
+    
+    %device = experiment.insertDevice(name, manufacturer, uuid);
     device = [];
     fprintf('device: %s, %s', name, manufacturer);
     
     addAnnotations(reader, devicePath, device);
 end
 
-function device = findDevice(context, uuid)
+function device = findDevice(experiment, uuid)
     device = [];
+    
+%     devices = experiment.getDevicesWithIdentifier(uuid);
+%     if ~isempty(devices)
+%         device = devices{1};
+%     end
+%     if numel(devices) > 1
+%         warning(['Found multiple devices with identifier ' char(uuid)]);
+%     end
 end
 
 function source = readSource(parent, reader, sourcePath)
     label = reader.getStringAttribute(sourcePath, 'label');
     ticks = reader.getLongAttribute(sourcePath, 'creationTimeDotNetDateTimeOffsetTicks');
     offset = reader.getDoubleAttribute(sourcePath, 'creationTimeDotNetDateTimeOffsetOffsetHours');
-    creationTime = dotNetTicksToDateTime(ticks, offset);
+    creationTime = dotNetTicksToDatetime(ticks, offset);
+    uuid = reader.getStringAttribute(sourcePath, 'uuid');
     
-    %source = parent.insertSource(label, creationTime);
+    %source = parent.insertSource(label, creationTime, uuid);
     source = [];
     fprintf('source: %s, %s', label, creationTime);
     
@@ -91,13 +101,21 @@ function source = readSource(parent, reader, sourcePath)
     end
 end
 
-function source = findSource(context, uuid)
+function source = findSource(experiment, uuid)
     source = [];
+    
+%     sources = experiment.getSourcesWithIdentifier(uuid);
+%     if ~isempty(sources)
+%         source = sources{1};
+%     end
+%     if numel(sources) > 1
+%         warning(['Found multiple sources with identifier ' char(uuid)]);
+%     end
 end
 
 function group = readEpochGroup(parent, reader, groupPath)
     sourceUuid = reader.getStringAttribute([groupPath '/source'], 'uuid');
-    %source = findSource(parent.getDataContext(), sourceUuid);
+    %source = findSource(parent.experiment, sourceUuid);
     source = [];
 
     label = reader.getStringAttribute(groupPath, 'label');
@@ -171,7 +189,7 @@ end
 
 function background = readBackground(epoch, reader, backgroundPath)
     deviceUuid = reader.getStringAttribute([backgroundPath '/device'], 'uuid');
-    %device = findDevice(epoch.getDataContext(), deviceUuid);
+    %device = findDevice(epoch.experiment, deviceUuid);
     device = [];
     deviceParameters = readDeviceParameters(reader, backgroundPath, 'Amp1'); % device.name);
     
@@ -189,7 +207,7 @@ end
 
 function stimulus = readStimulus(epoch, reader, stimulusPath)
     deviceUuid = reader.getStringAttribute([stimulusPath '/device'], 'uuid');
-    %device = findDevice(epoch.getDataContext(), deviceUuid);
+    %device = findDevice(epoch.experiment, deviceUuid);
     device = [];
     deviceParameters = readDeviceParameters(reader, stimulusPath, 'Amp1'); % device.name);
     
@@ -212,7 +230,7 @@ end
 
 function response = readResponse(epoch, reader, responsePath)
     deviceUuid = reader.getStringAttribute([responsePath '/device'], 'uuid');
-    %device = findDevice(epoch.getDataContext(), deviceUuid);
+    %device = findDevice(epoch.experiment, deviceUuid);
     device = [];
     deviceParameters = readDeviceParameters(reader, responsePath, 'Amp1'); % device.name);
     
@@ -266,7 +284,34 @@ function tf = hasNotes(reader, entityPath)
 end
 
 function addNotes(reader, entityPath, entity)
-    fprintf(', notes');
+    [notes, times] = readNotes(reader, entityPath, 'notes');
+    for i = 1:numel(notes)
+        %entity.addNote(notes{i}, times(i));
+    end
+    fprintf(', notes{%s}', strjoin(notes, ', '));
+end
+
+function [n, t] = readNotes(reader, path, dsetName)
+    file = H5F.open(char(reader.getFile()), 'H5F_ACC_RDONLY', 'H5P_DEFAULT');
+    dset = H5D.open(file, [path '/' dsetName]);
+    
+    datatype = H5T.open(file, 'NOTE');
+    rnotes = H5D.read(dset, datatype, 'H5S_ALL', 'H5S_ALL', 'H5P_DEFAULT');
+    
+    H5T.close(datatype);
+    H5D.close(dset);
+    H5F.close(file);
+    
+    n = rnotes.text';
+    t = [];
+    for i = 1:numel(rnotes.time.ticks)
+        time = dotNetTicksToDatetime(rnotes.time.ticks(i), rnotes.time.offsetHours(i));
+        if isempty(t)
+            t = time;
+        else
+            t(end + 1) = time; %#ok<AGROW>
+        end
+    end
 end
 
 function tf = hasResources(reader, entityPath)
@@ -445,7 +490,7 @@ end
 function t = readStartTime(reader, path)
     ticks = reader.getLongAttribute(path, 'startTimeDotNetDateTimeOffsetTicks');
     offset = reader.getDoubleAttribute(path, 'startTimeDotNetDateTimeOffsetOffsetHours');
-    t = dotNetTicksToDateTime(ticks, offset);
+    t = dotNetTicksToDatetime(ticks, offset);
 end
 
 function tf = hasEndTime(reader, path)
@@ -456,10 +501,10 @@ end
 function t = readEndTime(reader, path)
     ticks = reader.getLongAttribute(path, 'endTimeDotNetDateTimeOffsetTicks');
     offset = reader.getDoubleAttribute(path, 'endTimeDotNetDateTimeOffsetOffsetHours');
-    t = dotNetTicksToDateTime(ticks, offset);
+    t = dotNetTicksToDatetime(ticks, offset);
 end
 
-function t = dotNetTicksToDateTime(ticks, offset)
+function t = dotNetTicksToDatetime(ticks, offset)
     import java.time.*;
 
     tz = ZoneOffset.ofHours(offset);
@@ -472,6 +517,11 @@ function t = dotNetTicksToDateTime(ticks, offset)
     
     tmp = Instant.ofEpochMilli(ms);
     
-    t = tmp.minus(Duration.between(dotNetRefDate, javaRefDate));
-    t = t.atZone(tz);
+    zdt = tmp.minus(Duration.between(dotNetRefDate, javaRefDate));
+    zdt = zdt.atZone(tz);
+    
+    second = double(zdt.getSecond()) + (double(zdt.getNano()) / 10^9);
+    t = datetime(zdt.getYear(), zdt.getMonthValue(), zdt.getDayOfMonth(), zdt.getHour(), zdt.getMinute(), second);
+    tz = char(zdt.getZone().toString());
+    t.TimeZone = tz;
 end
