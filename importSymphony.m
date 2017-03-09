@@ -60,25 +60,17 @@ end
 function device = readDevice(experiment, reader, devicePath)
     name = reader.getStringAttribute(devicePath, 'name');
     manufacturer = reader.getStringAttribute(devicePath, 'manufacturer');
-    uuid = reader.getStringAttribute(devicePath, 'uuid');
     
-    %device = experiment.insertDevice(name, manufacturer, uuid);
+    %device = experiment.insertDevice(name, manufacturer);
     device = [];
     fprintf('device: %s, %s', name, manufacturer);
     
     addAnnotations(reader, devicePath, device);
 end
 
-function device = findDevice(experiment, uuid)
+function device = findDevice(experiment, name, manufacturer)
     device = [];
-    
-%     devices = experiment.getDevicesWithIdentifier(uuid);
-%     if ~isempty(devices)
-%         device = devices{1};
-%     end
-%     if numel(devices) > 1
-%         warning(['Found multiple devices with identifier ' char(uuid)]);
-%     end
+    %device = experiment.getDevice(name, manufacturer);
 end
 
 function source = readSource(parent, reader, sourcePath)
@@ -86,11 +78,11 @@ function source = readSource(parent, reader, sourcePath)
     ticks = reader.getLongAttribute(sourcePath, 'creationTimeDotNetDateTimeOffsetTicks');
     offset = reader.getDoubleAttribute(sourcePath, 'creationTimeDotNetDateTimeOffsetOffsetHours');
     creationTime = dotNetTicksToDatetime(ticks, offset);
-    uuid = reader.getStringAttribute(sourcePath, 'uuid');
+    id = reader.getStringAttribute(sourcePath, 'uuid');
     
-    %source = parent.insertSource(label, creationTime, uuid);
+    %source = parent.insertSource(label, creationTime, id);
     source = [];
-    fprintf('source: %s, %s', label, creationTime);
+    fprintf('source: %s, %s, %s', label, creationTime, id);
     
     addAnnotations(reader, sourcePath, source);
     
@@ -101,10 +93,10 @@ function source = readSource(parent, reader, sourcePath)
     end
 end
 
-function source = findSource(experiment, uuid)
+function source = findSource(experiment, id)
     source = [];
     
-%     sources = experiment.getSourcesWithIdentifier(uuid);
+%     sources = experiment.getSourcesWithIdentifier(id);
 %     if ~isempty(sources)
 %         source = sources{1};
 %     end
@@ -114,8 +106,8 @@ function source = findSource(experiment, uuid)
 end
 
 function group = readEpochGroup(parent, reader, groupPath)
-    sourceUuid = reader.getStringAttribute([groupPath '/source'], 'uuid');
-    %source = findSource(parent.experiment, sourceUuid);
+    sourceId = reader.getStringAttribute([groupPath '/source'], 'uuid');
+    %source = findSource(parent.experiment, sourceId);
     source = [];
 
     label = reader.getStringAttribute(groupPath, 'label');
@@ -123,7 +115,7 @@ function group = readEpochGroup(parent, reader, groupPath)
     
     %group = parent.insertEpochGroup(source, label, startTime, endTime);
     group = [];
-    fprintf('epoch group: %s, %s, %s, %s', sourceUuid, label, startTime, endTime);
+    fprintf('epoch group: %s, %s, %s, %s', sourceId, label, startTime, endTime);
     
     addAnnotations(reader, groupPath, group);
     
@@ -159,10 +151,10 @@ function block = readEpochBlock(epochGroup, reader, blockPath)
 end
 
 function epoch = readEpoch(epochBlock, reader, epochPath)
-    [startTime, endTime] = readTimes(reader, epochPath);
     protocolParameters = readDictionary(reader, epochPath, 'protocolParameters');
+    [startTime, endTime] = readTimes(reader, epochPath);
 
-    %epoch = epochBlock.insertEpoch(startTime, endTime, protocolParameters);
+    %epoch = epochBlock.insertEpoch(protocolParameters, startTime, endTime);
     epoch = [];
     fprintf('epoch: %s, %s, [%s]', startTime, endTime, appbox.mapstr(protocolParameters));
     
@@ -188,9 +180,9 @@ function epoch = readEpoch(epochBlock, reader, epochPath)
 end
 
 function background = readBackground(epoch, reader, backgroundPath)
-    deviceUuid = reader.getStringAttribute([backgroundPath '/device'], 'uuid');
-    %device = findDevice(epoch.experiment, deviceUuid);
-    device = [];
+    deviceName = reader.getStringAttribute([backgroundPath '/device'], 'name');
+    deviceManufacturer = reader.getStringAttribute([backgroundPath '/device'], 'manufacturer');
+    %device = findDevice(epoch.experiment, deviceName, deviceManufacturer);
     deviceParameters = readDeviceParameters(reader, backgroundPath, 'Amp1'); % device.name);
     
     value = reader.getFloatAttribute(backgroundPath, 'value');
@@ -200,15 +192,15 @@ function background = readBackground(epoch, reader, backgroundPath)
 
     %background = epoch.insertBackground(device, deviceParameters, value, units, sampleRate, sampleRateUnits);
     background = [];
-    fprintf('background: %s, [%s], %s, %s, %s, %s', deviceUuid, deviceParameters, num2str(value), valueUnits, num2str(sampleRate), sampleRateUnits);
+    fprintf('background: %s, [%s], %s, %s, %s, %s', deviceName, appbox.mapstr(deviceParameters), num2str(value), valueUnits, num2str(sampleRate), sampleRateUnits);
     
     addAnnotations(reader, backgroundPath, background);
 end
 
 function stimulus = readStimulus(epoch, reader, stimulusPath)
-    deviceUuid = reader.getStringAttribute([stimulusPath '/device'], 'uuid');
-    %device = findDevice(epoch.experiment, deviceUuid);
-    device = [];
+    deviceName = reader.getStringAttribute([stimulusPath '/device'], 'name');
+    deviceManufacturer = reader.getStringAttribute([stimulusPath '/device'], 'manufacturer');
+    %device = findDevice(epoch.experiment, deviceName, deviceManufacturer);
     deviceParameters = readDeviceParameters(reader, stimulusPath, 'Amp1'); % device.name);
     
     stimulusId = reader.getStringAttribute(stimulusPath, 'stimulusID');
@@ -223,15 +215,15 @@ function stimulus = readStimulus(epoch, reader, stimulusPath)
 
     %stimulus = epoch.insertStimulus(device, deviceParameters, stimulusId, parameters, units, data);
     stimulus = [];
-    fprintf('stimulus: %s, [%s], %s, [%s], %s, [%s]', deviceUuid, appbox.mapstr(deviceParameters), stimulusId, appbox.mapstr(parameters), units, num2str(size(data)));
+    fprintf('stimulus: %s, [%s], %s, [%s], %s, [%s]', deviceName, appbox.mapstr(deviceParameters), stimulusId, appbox.mapstr(parameters), units, num2str(size(data)));
     
     addAnnotations(reader, stimulusPath, stimulus);
 end
 
 function response = readResponse(epoch, reader, responsePath)
-    deviceUuid = reader.getStringAttribute([responsePath '/device'], 'uuid');
-    %device = findDevice(epoch.experiment, deviceUuid);
-    device = [];
+    deviceName = reader.getStringAttribute([responsePath '/device'], 'name');
+    deviceManufacturer = reader.getStringAttribute([responsePath '/device'], 'manufacturer');
+    %device = findDevice(epoch.experiment, deviceName, deviceManufacturer);
     deviceParameters = readDeviceParameters(reader, responsePath, 'Amp1'); % device.name);
     
     [data, units] = readMeasurements(reader, responsePath, 'data');
@@ -240,7 +232,7 @@ function response = readResponse(epoch, reader, responsePath)
 
     %response = epoch.insertResponse(device, deviceParameters, data, units, sampleRate, sampleRateUnits);
     response = [];
-    fprintf('response: %s, [%s], [%s], %s, %s, %s', deviceUuid, appbox.mapstr(deviceParameters), num2str(size(data)), units, num2str(sampleRate), sampleRateUnits);
+    fprintf('response: %s, [%s], [%s], %s, %s, %s', deviceName, appbox.mapstr(deviceParameters), num2str(size(data)), units, num2str(sampleRate), sampleRateUnits);
     
     addAnnotations(reader, responsePath, response);
 end
