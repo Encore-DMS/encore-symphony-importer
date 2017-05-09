@@ -32,8 +32,7 @@ function experiment = readExperiment(project, reader, experimentPath)
     purpose = reader.getStringAttribute(experimentPath, 'purpose');
     [startTime, endTime] = readTimes(reader, experimentPath);
     
-    %experiment = project.insertExperiment(purpose, startTime, endTime);
-    experiment = [];
+    experiment = project.insertExperiment(purpose, startTime, endTime);
     fprintf('experiment: %s, %s, %s', purpose, startTime, endTime);
     
     addAnnotations(reader, experimentPath, experiment);
@@ -61,16 +60,14 @@ function device = readDevice(experiment, reader, devicePath)
     name = reader.getStringAttribute(devicePath, 'name');
     manufacturer = reader.getStringAttribute(devicePath, 'manufacturer');
     
-    %device = experiment.insertDevice(name, manufacturer);
-    device = [];
+    device = experiment.insertDevice(name, manufacturer);
     fprintf('device: %s, %s', name, manufacturer);
     
     addAnnotations(reader, devicePath, device);
 end
 
 function device = findDevice(experiment, name, manufacturer)
-    device = [];
-    %device = experiment.getDevice(name, manufacturer);
+    device = experiment.getDevice(name, manufacturer);
 end
 
 function source = readSource(parent, reader, sourcePath)
@@ -80,8 +77,7 @@ function source = readSource(parent, reader, sourcePath)
     creationTime = dotNetTicksToDatetime(ticks, offset);
     id = reader.getStringAttribute(sourcePath, 'uuid');
     
-    %source = parent.insertSource(label, creationTime, id);
-    source = [];
+    source = parent.insertSource(label, creationTime, id);
     fprintf('source: %s, %s, %s', label, creationTime, id);
     
     addAnnotations(reader, sourcePath, source);
@@ -94,27 +90,29 @@ function source = readSource(parent, reader, sourcePath)
 end
 
 function source = findSource(experiment, id)
-    source = [];
-    
-%     sources = experiment.getSourcesWithIdentifier(id);
-%     if ~isempty(sources)
-%         source = sources{1};
-%     end
-%     if numel(sources) > 1
-%         warning(['Found multiple sources with identifier ' char(uuid)]);
-%     end
+    sources = experiment.getAllSourcesWithIdentifier(id);
+    if ~isempty(sources)
+        source = sources{1};
+    end
+    if numel(sources) > 1
+        warning(['Found multiple sources with identifier ' char(uuid)]);
+    end
 end
 
 function group = readEpochGroup(parent, reader, groupPath)
+    if parent.getEntityType() == encore.core.EntityType.EXPERIMENT
+        experiment = parent;
+    else
+        experiment = parent.experiment;
+    end
+
     sourceId = reader.getStringAttribute([groupPath '/source'], 'uuid');
-    %source = findSource(parent.experiment, sourceId);
-    source = [];
+    source = findSource(experiment, sourceId);
 
     label = reader.getStringAttribute(groupPath, 'label');
     [startTime, endTime] = readTimes(reader, groupPath);
     
-    %group = parent.insertEpochGroup(source, label, startTime, endTime);
-    group = [];
+    group = parent.insertEpochGroup(source, label, startTime, endTime);
     fprintf('epoch group: %s, %s, %s, %s', sourceId, label, startTime, endTime);
     
     addAnnotations(reader, groupPath, group);
@@ -137,8 +135,7 @@ function block = readEpochBlock(epochGroup, reader, blockPath)
     protocolParameters = readDictionary(reader, blockPath, 'protocolParameters');
     [startTime, endTime] = readTimes(reader, blockPath);
 
-    %block = epochGroup.insertEpochBlock(protocolId, protocolParameters, startTime, endTime);
-    block = [];
+    block = epochGroup.insertEpochBlock(protocolId, protocolParameters, startTime, endTime);
     fprintf('epoch block: %s, [%s], %s, %s', protocolId, appbox.mapstr(protocolParameters), startTime, endTime);
     
     addAnnotations(reader, blockPath, block);
@@ -154,8 +151,7 @@ function epoch = readEpoch(epochBlock, reader, epochPath)
     protocolParameters = readDictionary(reader, epochPath, 'protocolParameters');
     [startTime, endTime] = readTimes(reader, epochPath);
 
-    %epoch = epochBlock.insertEpoch(protocolParameters, startTime, endTime);
-    epoch = [];
+    epoch = epochBlock.insertEpoch(protocolParameters, startTime, endTime);
     fprintf('epoch: %s, %s, [%s]', startTime, endTime, appbox.mapstr(protocolParameters));
     
     addAnnotations(reader, epochPath, epoch);
@@ -182,16 +178,15 @@ end
 function background = readBackground(epoch, reader, backgroundPath)
     deviceName = reader.getStringAttribute([backgroundPath '/device'], 'name');
     deviceManufacturer = reader.getStringAttribute([backgroundPath '/device'], 'manufacturer');
-    %device = findDevice(epoch.experiment, deviceName, deviceManufacturer);
-    deviceParameters = readDeviceParameters(reader, backgroundPath, 'Amp1'); % device.name);
+    device = findDevice(epoch.epochBlock.epochGroup.experiment, deviceName, deviceManufacturer);
+    deviceParameters = readDeviceParameters(reader, backgroundPath, device.name);
     
     value = reader.getFloatAttribute(backgroundPath, 'value');
     valueUnits = reader.getStringAttribute(backgroundPath, 'valueUnits');
     sampleRate = reader.getFloatAttribute(backgroundPath, 'sampleRate');
     sampleRateUnits = reader.getStringAttribute(backgroundPath, 'sampleRateUnits');
 
-    %background = epoch.insertBackground(device, deviceParameters, value, units, sampleRate, sampleRateUnits);
-    background = [];
+    background = epoch.insertBackground(device, deviceParameters, value, valueUnits, sampleRate, sampleRateUnits);
     fprintf('background: %s, [%s], %s, %s, %s, %s', deviceName, appbox.mapstr(deviceParameters), num2str(value), valueUnits, num2str(sampleRate), sampleRateUnits);
     
     addAnnotations(reader, backgroundPath, background);
@@ -200,8 +195,8 @@ end
 function stimulus = readStimulus(epoch, reader, stimulusPath)
     deviceName = reader.getStringAttribute([stimulusPath '/device'], 'name');
     deviceManufacturer = reader.getStringAttribute([stimulusPath '/device'], 'manufacturer');
-    %device = findDevice(epoch.experiment, deviceName, deviceManufacturer);
-    deviceParameters = readDeviceParameters(reader, stimulusPath, 'Amp1'); % device.name);
+    device = findDevice(epoch.epochBlock.epochGroup.experiment, deviceName, deviceManufacturer);
+    deviceParameters = readDeviceParameters(reader, stimulusPath, device.name);
     
     stimulusId = reader.getStringAttribute(stimulusPath, 'stimulusID');
     parameters = readDictionary(reader, stimulusPath, 'parameters');
@@ -213,8 +208,7 @@ function stimulus = readStimulus(epoch, reader, stimulusPath)
         data = [];
     end
 
-    %stimulus = epoch.insertStimulus(device, deviceParameters, stimulusId, parameters, units, data);
-    stimulus = [];
+    stimulus = epoch.insertStimulus(device, deviceParameters, stimulusId, parameters, units, data);
     fprintf('stimulus: %s, [%s], %s, [%s], %s, [%s]', deviceName, appbox.mapstr(deviceParameters), stimulusId, appbox.mapstr(parameters), units, num2str(size(data)));
     
     addAnnotations(reader, stimulusPath, stimulus);
@@ -223,15 +217,14 @@ end
 function response = readResponse(epoch, reader, responsePath)
     deviceName = reader.getStringAttribute([responsePath '/device'], 'name');
     deviceManufacturer = reader.getStringAttribute([responsePath '/device'], 'manufacturer');
-    %device = findDevice(epoch.experiment, deviceName, deviceManufacturer);
-    deviceParameters = readDeviceParameters(reader, responsePath, 'Amp1'); % device.name);
+    device = findDevice(epoch.epochBlock.epochGroup.experiment, deviceName, deviceManufacturer);
+    deviceParameters = readDeviceParameters(reader, responsePath, device.name);
     
     [data, units] = readMeasurements(reader, responsePath, 'data');
     sampleRate = reader.getFloatAttribute(responsePath, 'sampleRate');
     sampleRateUnits = reader.getStringAttribute(responsePath, 'sampleRateUnits');
 
-    %response = epoch.insertResponse(device, deviceParameters, data, units, sampleRate, sampleRateUnits);
-    response = [];
+    response = epoch.insertResponse(device, deviceParameters, data, units, sampleRate, sampleRateUnits);
     fprintf('response: %s, [%s], [%s], %s, %s, %s', deviceName, appbox.mapstr(deviceParameters), num2str(size(data)), units, num2str(sampleRate), sampleRateUnits);
     
     addAnnotations(reader, responsePath, response);
@@ -251,7 +244,7 @@ function addAnnotations(reader, entityPath, entity)
         addKeywords(reader, entityPath, entity);
     end
     uuid = reader.getStringAttribute(entityPath, 'uuid');
-    %entity.addProperty('__symphony__uuid__', uuid);
+    entity.addProperty('__symphony__uuid__', uuid);
     
     fprintf(', %s\n', uuid);
 end
@@ -265,7 +258,7 @@ function addProperties(reader, entityPath, entity)
     keys = properties.keys;
     for i = 1:numel(keys)
         key = keys{i};
-        %entity.addProperty(key, properties(key));
+        entity.addProperty(key, properties(key));
     end
 
     fprintf(', properties[%s]', appbox.mapstr(properties));
@@ -278,7 +271,7 @@ end
 function addNotes(reader, entityPath, entity)
     [notes, times] = readNotes(reader, entityPath, 'notes');
     for i = 1:numel(notes)
-        %entity.addNote(notes{i}, times(i));
+        entity.addNote(times(i), notes{i});
     end
     fprintf(', notes{%s}', strjoin(notes, ', '));
 end
@@ -324,9 +317,8 @@ function resource = readResource(entity, reader, resourcePath)
     name = reader.getStringAttribute(resourcePath, 'name');
     data = typecast(reader.readAsByteArray([resourcePath '/data']), 'uint8');
     
-    %resource = entity.addResource(uti, name, data);
-    resource = [];
-    fprintf('\tresource: %s, %s, [%s]', uti, name, num2str(size(data)));
+    resource = entity.addResource(name, data, uti);
+    fprintf('\tresource: %s, [%s], %s', name, num2str(size(data)), uti);
     
     addAnnotations(reader, resourcePath, resource);
 end
@@ -357,7 +349,7 @@ function addKeywords(reader, entityPath, entity)
     keywordsStr = char(reader.getStringAttribute(entityPath, 'keywords'));
     keywords = strsplit(keywordsStr, ',');
     for i = 1:numel(keywords)
-        %entity.addTag(keywords(i));
+        entity.addKeyword(keywords(i));
     end
     fprintf(', keywords{%s}', strjoin(keywords, ', '));
 end
